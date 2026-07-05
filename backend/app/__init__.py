@@ -1,0 +1,2 @@
+"""MonoReg backend application package."""
+

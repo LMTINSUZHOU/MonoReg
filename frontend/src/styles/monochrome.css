@@ -1,0 +1,89 @@
+.el-button {
+  border-radius: var(--radius-sm);
+  transition: all 0.16s ease;
+  font-weight: 600;
+}
+
+.el-button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--mono-black);
+  --el-button-border-color: var(--mono-black);
+  --el-button-text-color: var(--mono-white);
+  --el-button-hover-bg-color: var(--mono-gray-800);
+  --el-button-hover-border-color: var(--mono-gray-800);
+  --el-button-active-bg-color: var(--mono-black);
+  --el-button-active-border-color: var(--mono-black);
+}
+
+.el-button--default {
+  --el-button-bg-color: var(--mono-white);
+  --el-button-border-color: var(--mono-gray-300);
+  --el-button-text-color: var(--mono-black);
+  --el-button-hover-bg-color: var(--mono-gray-50);
+  --el-button-hover-border-color: var(--mono-gray-400);
+  --el-button-hover-text-color: var(--mono-black);
+}
+
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  box-shadow: 0 0 0 1px var(--mono-gray-300) inset;
+  border-radius: var(--radius-sm);
+}
+
+.el-input__wrapper.is-focus,
+.el-textarea__inner:focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--mono-black) inset;
+}
+
+.el-table {
+  --el-table-header-bg-color: var(--mono-gray-100);
+  --el-table-row-hover-bg-color: var(--mono-gray-100);
+  --el-table-border-color: var(--mono-gray-200);
+  --el-table-text-color: var(--mono-gray-800);
+  --el-table-header-text-color: var(--mono-black);
+  font-size: 13px;
+}
+
+.el-table th.el-table__cell {
+  font-weight: 650;
+}
+
+.el-pagination {
+  --el-pagination-hover-color: var(--mono-black);
+  --el-pagination-button-color: var(--mono-black);
+}
+
+.el-tag,
+.el-message,
+.el-alert {
+  border-radius: var(--radius-sm);
+}
+
+.el-switch.is-checked .el-switch__core {
+  border-color: var(--mono-black);
+  background-color: var(--mono-black);
+}
+
+.el-tabs__active-bar {
+  background-color: var(--mono-black);
+}
+
+.el-tabs__item.is-active,
+.el-tabs__item:hover {
+  color: var(--mono-black);
+}
+
+.el-form-item.is-required:not(.is-no-asterisk).asterisk-left > .el-form-item__label::before,
+.el-form-item.is-required:not(.is-no-asterisk).asterisk-right > .el-form-item__label::after {
+  color: var(--mono-black);
+}
+
+.el-dialog {
+  border-radius: var(--radius-md);
+}
