@@ -42,7 +42,12 @@ request.interceptors.response.use(
     const message = error.response?.data?.message || error.message || '网络请求失败'
     if (error.response?.status === 401) {
       localStorage.removeItem('monoreg_token')
-      window.location.href = '/login'
+      const publicPath = window.location.pathname === '/login' || window.location.pathname.startsWith('/register/')
+      if (publicPath) {
+        ElMessage.error(message)
+      } else {
+        window.location.href = '/login'
+      }
     } else {
       ElMessage.error(message)
     }
@@ -54,4 +59,3 @@ export async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Pro
   const response = await promise
   return response.data.data
 }
-

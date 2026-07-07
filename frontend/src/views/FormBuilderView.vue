@@ -1,5 +1,4 @@
 <template>
-  <AdminLayout>
     <div class="builder">
       <section class="panel type-panel">
         <div class="panel-header"><h2 class="panel-title">字段类型</h2></div>
@@ -11,10 +10,17 @@
       <section class="panel">
         <div class="panel-header">
           <h2 class="panel-title">字段列表</h2>
-          <el-button type="primary" :loading="saving" @click="save">保存字段配置</el-button>
+          <el-button type="primary" :loading="saving" :disabled="loading" @click="save">保存字段配置</el-button>
         </div>
-        <div class="panel-body">
-          <div v-if="!fields.length" class="empty-state">暂无字段，请从左侧添加。</div>
+        <div class="panel-body" v-loading="loading" element-loading-text="加载字段中">
+          <StateBlock
+            v-if="!fields.length && !loading"
+            title="暂无字段"
+            description="添加字段后即可保存报名表单配置。"
+            action-label="添加单行文本"
+            mark="+"
+            @action="addField('text')"
+          />
           <div v-for="(field, index) in fields" :key="field.field_key" class="field-row" :class="{ active: selectedIndex === index }" @click="selectedIndex = index">
             <div>
               <strong>{{ field.field_label }}</strong>
@@ -60,20 +66,20 @@
         </div>
       </section>
     </div>
-  </AdminLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import AdminLayout from '../components/layout/AdminLayout.vue'
+import StateBlock from '../components/common/StateBlock.vue'
 import { listFormFields, saveFormFields } from '../api/activities'
 import type { FormField } from '../api/types'
 import { fieldTypeLabel, fieldTypeOptions } from '../utils/labels'
 
 const route = useRoute()
 const activityId = Number(route.params.id)
+const loading = ref(false)
 const saving = ref(false)
 const selectedIndex = ref(0)
 const optionTypes = ['select', 'multi_select', 'radio']
@@ -105,8 +111,13 @@ function coreField(key: string, label: string, type: string, sort: number): Form
 }
 
 async function load() {
-  const data = await listFormFields(activityId)
-  fields.value = data.length ? data : [coreField('name', '姓名', 'text', 1), coreField('email', '邮箱', 'email', 2), coreField('phone', '手机号', 'phone', 3)]
+  loading.value = true
+  try {
+    const data = await listFormFields(activityId)
+    fields.value = data.length ? data : [coreField('name', '姓名', 'text', 1), coreField('email', '邮箱', 'email', 2), coreField('phone', '手机号', 'phone', 3)]
+  } finally {
+    loading.value = false
+  }
 }
 
 function addField(type: string) {
@@ -144,6 +155,7 @@ function remove(index: number) {
 }
 
 async function save() {
+  if (saving.value) return
   saving.value = true
   try {
     fields.value.forEach((field, index) => {
@@ -221,6 +233,37 @@ onMounted(load)
 @media (max-width: 1100px) {
   .builder {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .type-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .field-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .field-actions {
+    flex-wrap: wrap;
+  }
+
+  .field-actions .el-button {
+    flex: 1 1 calc(33.333% - 4px);
+    min-width: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .type-list {
+    grid-template-columns: 1fr;
+  }
+
+  .field-actions .el-button {
+    flex-basis: 100%;
   }
 }
 </style>

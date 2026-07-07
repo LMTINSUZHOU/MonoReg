@@ -1,11 +1,19 @@
 <template>
-  <AdminLayout>
     <section class="panel" v-loading="loading">
       <div class="panel-header">
         <h2 class="panel-title">报名详情</h2>
         <RouterLink class="mono-link" to="/registrations">返回列表</RouterLink>
       </div>
-      <div v-if="registration" class="panel-body detail-grid">
+      <StateBlock
+        v-if="loadError && !loading"
+        title="报名详情加载失败"
+        :description="loadError"
+        action-label="重试"
+        mark="!"
+        tone="error"
+        @action="load"
+      />
+      <div v-else-if="registration" class="panel-body detail-grid">
         <div>
           <div class="caption">基本信息</div>
           <dl class="detail-list">
@@ -21,7 +29,7 @@
                 <el-option v-for="status in registrationStatusOptions" :key="status.value" :label="status.label" :value="status.value" />
               </el-select>
             </el-form-item>
-            <el-button type="primary" @click="save">保存状态</el-button>
+            <el-button type="primary" :loading="saving" @click="save">保存状态</el-button>
           </el-form>
         </div>
         <div>
@@ -35,29 +43,34 @@
         </div>
       </div>
     </section>
-  </AdminLayout>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import AdminLayout from '../components/layout/AdminLayout.vue'
 import StatusTag from '../components/common/StatusTag.vue'
+import StateBlock from '../components/common/StateBlock.vue'
 import { getRegistration, updateRegistration } from '../api/registrations'
 import type { Registration } from '../api/types'
 import { registrationStatusOptions } from '../utils/labels'
 
 const route = useRoute()
 const loading = ref(false)
+const saving = ref(false)
+const loadError = ref('')
 const registration = ref<Registration | null>(null)
 const editForm = reactive({ status: '' })
 
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     registration.value = await getRegistration(Number(route.params.id))
     editForm.status = registration.value.status
+  } catch (error) {
+    registration.value = null
+    loadError.value = '请确认报名记录是否存在，或稍后重试。'
   } finally {
     loading.value = false
   }
@@ -65,9 +78,15 @@ async function load() {
 
 async function save() {
   if (!registration.value) return
-  await updateRegistration(registration.value.id, { status: editForm.status })
-  ElMessage.success('报名状态已更新')
-  load()
+  if (saving.value) return
+  saving.value = true
+  try {
+    await updateRegistration(registration.value.id, { status: editForm.status })
+    ElMessage.success('报名状态已更新')
+    await load()
+  } finally {
+    saving.value = false
+  }
 }
 
 onMounted(load)
@@ -111,5 +130,38 @@ dd {
   align-items: center;
   gap: 12px;
   margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+@media (max-width: 560px) {
+  .detail-list {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .detail-list dd {
+    margin-bottom: 8px;
+  }
+
+  .edit-form .el-button {
+    width: 100%;
+  }
+
+  .json-box {
+    min-height: 180px;
+    padding: 12px;
+    font-size: 12px;
+  }
+
+  .account-box {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

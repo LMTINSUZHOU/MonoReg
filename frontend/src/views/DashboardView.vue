@@ -1,5 +1,4 @@
 <template>
-  <AdminLayout>
     <div class="grid grid-4">
       <section v-for="metric in metrics" :key="metric.label" class="metric panel">
         <div class="metric-label">{{ metric.label }}</div>
@@ -20,6 +19,9 @@
             <el-table-column label="状态" width="96">
               <template #default="{ row }"><StatusTag :status="row.status" :label="statusLabel(row.status)" /></template>
             </el-table-column>
+            <template #empty>
+              <StateBlock title="暂无报名数据" description="有公开报名提交后会显示在这里。" />
+            </template>
           </el-table>
         </div>
       </section>
@@ -40,17 +42,19 @@
             <el-table-column label="状态" width="88">
               <template #default="{ row }"><StatusTag :status="row.status" :label="emailJobStatusLabel(row.status)" /></template>
             </el-table-column>
+            <template #empty>
+              <StateBlock title="暂无邮件任务" description="创建批量邮件任务后会显示在这里。" />
+            </template>
           </el-table>
         </div>
       </section>
     </div>
-  </AdminLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import AdminLayout from '../components/layout/AdminLayout.vue'
 import StatusTag from '../components/common/StatusTag.vue'
+import StateBlock from '../components/common/StateBlock.vue'
 import { listActivities } from '../api/activities'
 import { listRegistrations } from '../api/registrations'
 import { listAccounts } from '../api/accounts'

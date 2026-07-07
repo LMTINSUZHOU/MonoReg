@@ -1,5 +1,4 @@
 <template>
-  <AdminLayout>
     <section class="panel form-page">
       <div class="panel-header">
         <h2 class="panel-title">{{ isEdit ? '编辑活动' : '创建活动' }}</h2>
@@ -7,11 +6,11 @@
       <div class="panel-body">
         <el-form :model="form" label-position="top" class="activity-form">
           <div class="grid grid-2">
-            <el-form-item label="活动名称">
-              <el-input v-model="form.title" />
+            <el-form-item label="活动名称" :error="fieldErrors.title">
+              <el-input ref="titleInput" v-model="form.title" @input="fieldErrors.title = ''" />
             </el-form-item>
-            <el-form-item label="报名地址标识">
-              <el-input v-model="form.slug" />
+            <el-form-item label="报名地址标识" :error="fieldErrors.slug">
+              <el-input ref="slugInput" v-model="form.slug" @input="fieldErrors.slug = ''" />
             </el-form-item>
           </div>
           <el-form-item label="报名页简介">
@@ -22,7 +21,7 @@
                 :show-file-list="false"
                 :on-change="importMarkdownIntro"
               >
-                <el-button>导入 Markdown</el-button>
+                <el-button :loading="importingIntro">导入 Markdown</el-button>
               </el-upload>
               <span class="caption">支持标题、列表、引用、链接、图片和代码块。</span>
             </div>
@@ -56,26 +55,28 @@
             <el-input v-model="form.login_url" placeholder="https://oj.example.com" />
           </el-form-item>
           <div class="form-actions">
-            <el-button @click="router.push('/activities')">取消</el-button>
+            <el-button :disabled="loading" @click="router.push('/activities')">取消</el-button>
             <el-button type="primary" :loading="loading" @click="save">保存</el-button>
           </div>
         </el-form>
       </div>
     </section>
-  </AdminLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type UploadFile } from 'element-plus'
-import AdminLayout from '../components/layout/AdminLayout.vue'
 import { createActivity, getActivity, updateActivity } from '../api/activities'
 import { activityStatusOptions } from '../utils/labels'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
+const importingIntro = ref(false)
+const fieldErrors = reactive({ title: '', slug: '' })
+const titleInput = ref()
+const slugInput = ref()
 const isEdit = computed(() => Boolean(route.params.id))
 const form = reactive({
   title: '',
@@ -100,15 +101,36 @@ async function load() {
 
 async function importMarkdownIntro(file: UploadFile) {
   if (!file.raw) return
+  importingIntro.value = true
   if (!/\.(md|markdown|txt)$/i.test(file.name)) {
+    importingIntro.value = false
     ElMessage.error('请选择 Markdown 文件')
     return
   }
-  form.description = await file.raw.text()
-  ElMessage.success('Markdown 简介已导入')
+  try {
+    form.description = await file.raw.text()
+    ElMessage.success('Markdown 简介已导入')
+  } finally {
+    importingIntro.value = false
+  }
 }
 
 async function save() {
+  if (loading.value) return
+  fieldErrors.title = ''
+  fieldErrors.slug = ''
+  if (!form.title.trim()) {
+    fieldErrors.title = '请填写活动名称'
+    await nextTick()
+    titleInput.value?.focus?.()
+    return
+  }
+  if (!form.slug.trim()) {
+    fieldErrors.slug = '请填写报名地址标识'
+    await nextTick()
+    slugInput.value?.focus?.()
+    return
+  }
   loading.value = true
   try {
     const payload = { ...form }
@@ -152,5 +174,35 @@ onMounted(load)
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+@media (max-width: 760px) {
+  .activity-form {
+    max-width: none;
+  }
+
+  .description-tools {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .description-tools .caption {
+    line-height: 1.5;
+  }
+
+  .switch-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .form-actions .el-button {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 </style>

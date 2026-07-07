@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import db_session, get_current_user, require_write_user
@@ -103,7 +104,11 @@ def update_registration(
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, key, value)
     record_audit(db, user, "registration.update", "registration", item.id, {}, request.client.host if request.client else None)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="该邮箱已报名") from exc
     db.refresh(item)
     return ok(_serialize_registration(item), "报名记录已更新")
 
@@ -145,4 +150,3 @@ def delete_registration(
     record_audit(db, user, "registration.delete", "registration", registration_id, {}, request.client.host if request.client else None)
     db.commit()
     return ok({"id": registration_id}, "报名记录已删除")
-

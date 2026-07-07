@@ -55,8 +55,10 @@ docker compose up --build
 访问：
 
 - Frontend: <http://localhost:5173>
-- Backend API docs: <http://localhost:8000/docs>
-- Health: <http://localhost:8000/api/health>
+- Backend API docs: <http://localhost:5173/docs>
+- Health: <http://localhost:5173/api/health>
+
+默认 Docker 部署只向宿主机暴露前端端口。Backend、PostgreSQL 和 Redis 仅在 Compose 内部网络访问，避免数据库、队列和后台接口被直接暴露。若本机调试需要直连服务，请使用本地开发命令启动后端，或创建临时 `docker-compose.override.yml` 映射所需端口，调试结束后移除。
 
 ## 环境变量说明
 
@@ -105,4 +107,3 @@ monoreg/
 - Database: `docs/DATABASE.md`
 - Deploy: `docs/DEPLOY.md`
 - PRD: `docs/PRD.md`
-

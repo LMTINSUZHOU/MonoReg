@@ -9,13 +9,13 @@
         </div>
       </div>
       <el-form :model="form" label-position="top" @submit.prevent="submit">
-        <el-form-item label="用户名">
-          <el-input v-model="form.username" autocomplete="username" />
+        <el-form-item label="用户名" :error="formErrors.username">
+          <el-input v-model="form.username" autocomplete="username" @input="formErrors.username = ''" />
         </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" autocomplete="current-password" show-password />
+        <el-form-item label="密码" :error="formErrors.password">
+          <el-input v-model="form.password" type="password" autocomplete="current-password" show-password @input="formErrors.password = ''" />
         </el-form-item>
-        <el-button type="primary" class="login-button" :loading="loading" @click="submit">登录</el-button>
+        <el-button type="primary" class="login-button" :loading="loading" :disabled="loading" @click="submit">登录</el-button>
       </el-form>
     </section>
   </main>
@@ -30,11 +30,21 @@ import { useAuthStore } from '../stores/auth'
 const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(false)
+const formErrors = reactive({ username: '', password: '' })
 const form = reactive({ username: 'admin', password: 'admin123456' })
 
 async function submit() {
-  if (!form.username || !form.password) {
-    ElMessage.error('请输入用户名和密码')
+  if (loading.value) return
+  formErrors.username = ''
+  formErrors.password = ''
+  if (!form.username) {
+    formErrors.username = '请输入用户名'
+    ElMessage.error(formErrors.username)
+    return
+  }
+  if (!form.password) {
+    formErrors.password = '请输入密码'
+    ElMessage.error(formErrors.password)
     return
   }
   loading.value = true
@@ -95,4 +105,3 @@ p {
   margin-top: 8px;
 }
 </style>
-

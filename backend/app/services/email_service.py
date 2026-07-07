@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Account, Activity, AdminUser, EmailJob, EmailLog, EmailTemplate, Registration
@@ -20,6 +21,11 @@ def get_template_or_404(db: Session, template_id: int) -> EmailTemplate:
     if not template:
         raise HTTPException(status_code=404, detail="邮件模板不存在")
     return template
+
+
+def assert_template_activity(template: EmailTemplate, activity_id: int) -> None:
+    if template.activity_id != activity_id:
+        raise HTTPException(status_code=400, detail="邮件模板不属于当前活动")
 
 
 def preview_template(
@@ -39,6 +45,7 @@ def preview_template(
         ).unique().scalar_one_or_none()
         if not registration:
             raise HTTPException(status_code=404, detail="报名记录不存在")
+        assert_template_activity(template, registration.activity_id)
         activity = registration.activity
     if not activity:
         raise HTTPException(status_code=400, detail="需要关联活动或选择报名记录")
@@ -105,6 +112,7 @@ def create_email_job(
     if not activity:
         raise HTTPException(status_code=404, detail="活动不存在")
     template = get_template_or_404(db, template_id)
+    assert_template_activity(template, activity_id)
 
     registrations = db.execute(
         select(Registration)
@@ -192,70 +200,137 @@ def update_job_counts(db: Session, job_id: int) -> None:
         job.finished_at = datetime.now(UTC).replace(tzinfo=None)
 
 
-def process_job_logs(db: Session, job_id: int, *, max_retries: int = 3, rate_limit_seconds: float = 0.25) -> None:
+def _safe_commit(db: Session) -> bool:
+    try:
+        db.commit()
+        return True
+    except (ObjectDeletedError, StaleDataError):
+        db.rollback()
+        return False
+
+
+def _fail_job(db: Session, job_id: int, message: str) -> None:
     job = db.get(EmailJob, job_id)
     if not job:
         return
-    template = get_template_or_404(db, job.template_id)
-    activity = db.get(Activity, job.activity_id)
-    job.status = "running"
-    job.started_at = job.started_at or datetime.now(UTC).replace(tzinfo=None)
-    db.commit()
-
+    job.status = "failed"
+    job.finished_at = datetime.now(UTC).replace(tzinfo=None)
     logs = db.execute(
-        select(EmailLog)
-        .where(EmailLog.job_id == job_id, EmailLog.status.in_(["pending", "retrying"]))
-        .order_by(EmailLog.id)
-    ).scalars().all()
-
+        select(EmailLog).where(EmailLog.job_id == job_id, EmailLog.status.in_(["pending", "retrying"]))
+    ).scalars()
     for log in logs:
-        registration = db.execute(
-            select(Registration)
-            .where(Registration.id == log.registration_id)
-            .options(joinedload(Registration.account))
-        ).unique().scalar_one_or_none()
-        if not activity or not registration:
-            log.status = "failed"
-            log.error_message = "活动或报名记录不存在"
-            db.commit()
-            continue
+        log.status = "failed"
+        log.error_message = message
+    _safe_commit(db)
 
-        try:
-            account = registration.account
-            if template.type == "account_info" and not account:
-                raise RuntimeError("账号邮件缺少账号信息")
-            subject, body, missing = render_for_registration(
-                db,
-                activity,
-                registration,
-                template.subject,
-                template.body,
-                include_password=True,
-                redact_password=False,
-            )
-            if template.type == "account_info" and ("账号" in missing or "密码" in missing):
-                raise RuntimeError("账号邮件关键变量缺失")
-            log.status = "sending"
-            log.subject = subject
-            log.body_snapshot = body.replace(rendered_password(account), "******") if account else body
-            db.commit()
 
-            send_smtp(db, log.to_email, subject, body)
-            log.status = "sent"
-            log.error_message = None
-            log.sent_at = datetime.now(UTC).replace(tzinfo=None)
-            if template.type == "account_info" and account:
-                mark_account_sent(account, registration)
-            db.commit()
-            time.sleep(rate_limit_seconds)
-        except Exception as exc:
-            log.retry_count += 1
-            log.status = "retrying" if log.retry_count < max_retries else "failed"
-            log.error_message = str(exc)[:1000]
-            db.commit()
+def process_job_logs(db: Session, job_id: int, *, max_retries: int = 3, rate_limit_seconds: float = 0.25) -> None:
+    try:
+        job = db.get(EmailJob, job_id)
+        if not job:
+            return
+        activity_id = job.activity_id
+        template_id = job.template_id
+        template = db.get(EmailTemplate, template_id) if template_id else None
+        if not template:
+            _fail_job(db, job_id, "邮件模板不存在")
+            return
+        template_activity_id = template.activity_id
+        template_type = template.type
+        template_subject = template.subject
+        template_body = template.body
+        if template_activity_id != activity_id:
+            _fail_job(db, job_id, "邮件模板不属于当前活动")
+            return
+        if not db.get(Activity, activity_id):
+            _fail_job(db, job_id, "活动不存在")
+            return
 
-    update_job_counts(db, job_id)
-    db.commit()
+        job.status = "running"
+        job.started_at = job.started_at or datetime.now(UTC).replace(tzinfo=None)
+        if not _safe_commit(db):
+            return
+
+        log_ids = db.execute(
+            select(EmailLog.id)
+            .where(EmailLog.job_id == job_id, EmailLog.status.in_(["pending", "retrying"]))
+            .order_by(EmailLog.id)
+        ).scalars().all()
+
+        for log_id in log_ids:
+            log = db.get(EmailLog, log_id)
+            if not log:
+                continue
+            activity = db.get(Activity, activity_id)
+            registration = db.execute(
+                select(Registration)
+                .where(Registration.id == log.registration_id)
+                .options(joinedload(Registration.account))
+            ).unique().scalar_one_or_none()
+            if not activity or not registration:
+                log.status = "failed"
+                log.error_message = "活动或报名记录不存在"
+                if not _safe_commit(db):
+                    return
+                continue
+
+            try:
+                account = registration.account
+                if template_type == "account_info" and not account:
+                    raise RuntimeError("账号邮件缺少账号信息")
+                subject, body, missing = render_for_registration(
+                    db,
+                    activity,
+                    registration,
+                    template_subject,
+                    template_body,
+                    include_password=True,
+                    redact_password=False,
+                )
+                if template_type == "account_info" and ("账号" in missing or "密码" in missing):
+                    raise RuntimeError("账号邮件关键变量缺失")
+                log.status = "sending"
+                log.subject = subject
+                log.body_snapshot = body.replace(rendered_password(account), "******") if account else body
+                if not _safe_commit(db):
+                    return
+
+                send_smtp(db, log.to_email, subject, body)
+                log = db.get(EmailLog, log_id)
+                if not log:
+                    return
+                registration = db.execute(
+                    select(Registration)
+                    .where(Registration.id == log.registration_id)
+                    .options(joinedload(Registration.account))
+                ).unique().scalar_one_or_none()
+                account = registration.account if registration else None
+                log.status = "sent"
+                log.error_message = None
+                log.sent_at = datetime.now(UTC).replace(tzinfo=None)
+                if template_type == "account_info" and account and registration:
+                    mark_account_sent(account, registration)
+                if not _safe_commit(db):
+                    return
+                time.sleep(rate_limit_seconds)
+            except (ObjectDeletedError, StaleDataError):
+                db.rollback()
+                return
+            except Exception as exc:
+                db.rollback()
+                log = db.get(EmailLog, log_id)
+                if not log:
+                    return
+                log.retry_count += 1
+                log.status = "retrying" if log.retry_count < max_retries else "failed"
+                log.error_message = str(exc)[:1000]
+                if not _safe_commit(db):
+                    return
+
+        update_job_counts(db, job_id)
+        _safe_commit(db)
+    except (ObjectDeletedError, StaleDataError):
+        db.rollback()
 
 
 def rendered_password(account: Account | None) -> str:

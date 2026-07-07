@@ -1,5 +1,4 @@
 <template>
-  <AdminLayout>
     <PageToolbar>
       <template #left>
         <el-select v-model="filters.activity_id" placeholder="活动" clearable style="width: 220px">
@@ -8,14 +7,14 @@
         <el-select v-model="filters.type" placeholder="模板类型" clearable style="width: 190px">
           <el-option v-for="type in templateTypeOptions" :key="type.value" :label="type.label" :value="type.value" />
         </el-select>
-        <el-button @click="load">筛选</el-button>
+        <el-button :loading="loading" @click="load">筛选</el-button>
       </template>
       <el-button type="primary" @click="openCreate">创建模板</el-button>
     </PageToolbar>
 
     <section class="panel">
       <div class="panel-body">
-        <el-table :data="items" v-loading="loading" empty-text="暂无邮件模板">
+        <el-table :data="items" v-loading="loading" element-loading-text="加载模板中" empty-text="暂无邮件模板">
           <el-table-column prop="name" label="模板名称" min-width="180" />
           <el-table-column label="类型" min-width="160">
             <template #default="{ row }">{{ templateTypeLabel(row.type) }}</template>
@@ -29,14 +28,24 @@
               <el-button text @click="openEdit(row)">编辑</el-button>
               <el-button text @click="openPreview(row)">预览</el-button>
               <el-button text @click="openTest(row)">测试</el-button>
-              <el-button text @click="remove(row.id)">删除</el-button>
+              <el-button text :loading="actionLoading === `delete-${row.id}`" :disabled="Boolean(actionLoading)" @click="remove(row.id)">删除</el-button>
             </template>
           </el-table-column>
+          <template #empty>
+            <StateBlock
+              :title="loadError ? '模板加载失败' : '暂无邮件模板'"
+              :description="loadError || '创建模板后即可用于报名确认、账号通知和批量邮件。'"
+              :action-label="loadError ? '重试' : '创建模板'"
+              :mark="loadError ? '!' : '+'"
+              :tone="loadError ? 'error' : 'empty'"
+              @action="loadError ? load() : openCreate()"
+            />
+          </template>
         </el-table>
       </div>
     </section>
 
-    <el-dialog v-model="editorVisible" :title="editingId ? '编辑模板' : '创建模板'" width="760px">
+    <el-dialog v-model="editorVisible" :title="editingId ? '编辑模板' : '创建模板'" width="760px" @opened="focusTemplateEditor">
       <el-form :model="editor" label-position="top">
         <div class="grid grid-2">
           <el-form-item label="活动">
@@ -50,7 +59,7 @@
             </el-select>
           </el-form-item>
         </div>
-        <el-form-item label="名称"><el-input v-model="editor.name" /></el-form-item>
+        <el-form-item label="名称"><el-input ref="templateNameInput" v-model="editor.name" /></el-form-item>
         <el-form-item label="主题"><el-input v-model="editor.subject" /></el-form-item>
         <el-form-item label="正文">
           <el-input v-model="editor.body" type="textarea" :rows="10" />
@@ -62,7 +71,7 @@
       </el-form>
       <template #footer>
         <el-button @click="editorVisible = false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button type="primary" :loading="actionLoading === 'save'" @click="save">保存</el-button>
       </template>
     </el-dialog>
 
@@ -72,7 +81,7 @@
           <el-input-number v-model="previewRegistrationId" :min="1" />
         </el-form-item>
       </el-form>
-      <el-button @click="submitPreview">生成预览</el-button>
+      <el-button :loading="actionLoading === 'preview'" @click="submitPreview">生成预览</el-button>
       <div v-if="previewResult" class="preview-box">
         <strong>{{ previewResult.subject }}</strong>
         <pre>{{ previewResult.body }}</pre>
@@ -80,30 +89,32 @@
       </div>
     </el-dialog>
 
-    <el-dialog v-model="testVisible" title="发送测试邮件" width="480px">
+    <el-dialog v-model="testVisible" title="发送测试邮件" width="480px" @opened="focusTestDialog">
       <el-form label-position="top">
-        <el-form-item label="收件邮箱"><el-input v-model="testEmail" /></el-form-item>
+        <el-form-item label="收件邮箱"><el-input ref="testEmailInput" v-model="testEmail" /></el-form-item>
         <el-form-item label="报名 ID（可选）"><el-input-number v-model="testRegistrationId" :min="1" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="testVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitTest">发送</el-button>
+        <el-button type="primary" :loading="actionLoading === 'test'" @click="submitTest">发送</el-button>
       </template>
     </el-dialog>
-  </AdminLayout>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import AdminLayout from '../components/layout/AdminLayout.vue'
 import PageToolbar from '../components/common/PageToolbar.vue'
+import StateBlock from '../components/common/StateBlock.vue'
 import { listActivities } from '../api/activities'
 import { createTemplate, deleteTemplate, listTemplates, previewTemplate, sendTestEmail, updateTemplate } from '../api/emails'
 import type { Activity, EmailTemplate } from '../api/types'
 import { templateTypeLabel, templateTypeOptions } from '../utils/labels'
+import { debounce } from '../utils/timing'
 
 const loading = ref(false)
+const actionLoading = ref('')
+const loadError = ref('')
 const activities = ref<Activity[]>([])
 const items = ref<EmailTemplate[]>([])
 const filters = reactive({ activity_id: undefined as number | undefined, type: '' })
@@ -126,11 +137,18 @@ const testVisible = ref(false)
 const testTemplateId = ref<number>()
 const testEmail = ref('')
 const testRegistrationId = ref<number>()
+const templateNameInput = ref()
+const testEmailInput = ref()
+const debouncedLoad = debounce(load, 260)
 
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     items.value = await listTemplates(filters)
+  } catch (error) {
+    items.value = []
+    loadError.value = '请检查筛选条件或后端服务状态，然后重试。'
   } finally {
     loading.value = false
   }
@@ -154,22 +172,34 @@ function openEdit(row: EmailTemplate) {
 }
 
 async function save() {
-  if (editingId.value) {
-    await updateTemplate(editingId.value, editor)
-    ElMessage.success('模板已更新')
-  } else {
-    await createTemplate(editor)
-    ElMessage.success('模板已创建')
+  if (actionLoading.value) return
+  actionLoading.value = 'save'
+  try {
+    if (editingId.value) {
+      await updateTemplate(editingId.value, editor)
+      ElMessage.success('模板已更新')
+    } else {
+      await createTemplate(editor)
+      ElMessage.success('模板已创建')
+    }
+    editorVisible.value = false
+    await load()
+  } finally {
+    actionLoading.value = ''
   }
-  editorVisible.value = false
-  load()
 }
 
 async function remove(id: number) {
+  if (actionLoading.value) return
   await ElMessageBox.confirm('确认删除该邮件模板？', '删除模板')
-  await deleteTemplate(id)
-  ElMessage.success('模板已删除')
-  load()
+  actionLoading.value = `delete-${id}`
+  try {
+    await deleteTemplate(id)
+    ElMessage.success('模板已删除')
+    await load()
+  } finally {
+    actionLoading.value = ''
+  }
 }
 
 function openPreview(row: EmailTemplate) {
@@ -180,7 +210,13 @@ function openPreview(row: EmailTemplate) {
 
 async function submitPreview() {
   if (!previewTemplateId.value) return
-  previewResult.value = await previewTemplate(previewTemplateId.value, previewRegistrationId.value)
+  if (actionLoading.value) return
+  actionLoading.value = 'preview'
+  try {
+    previewResult.value = await previewTemplate(previewTemplateId.value, previewRegistrationId.value)
+  } finally {
+    actionLoading.value = ''
+  }
 }
 
 function openTest(row: EmailTemplate) {
@@ -190,15 +226,33 @@ function openTest(row: EmailTemplate) {
 
 async function submitTest() {
   if (!testTemplateId.value || !testEmail.value) return
-  await sendTestEmail({ template_id: testTemplateId.value, to_email: testEmail.value, registration_id: testRegistrationId.value })
-  testVisible.value = false
-  ElMessage.success('测试邮件已发送')
+  if (actionLoading.value) return
+  actionLoading.value = 'test'
+  try {
+    await sendTestEmail({ template_id: testTemplateId.value, to_email: testEmail.value, registration_id: testRegistrationId.value })
+    testVisible.value = false
+    ElMessage.success('测试邮件已发送')
+  } finally {
+    actionLoading.value = ''
+  }
+}
+
+async function focusTemplateEditor() {
+  await nextTick()
+  templateNameInput.value?.focus?.()
+}
+
+async function focusTestDialog() {
+  await nextTick()
+  testEmailInput.value?.focus?.()
 }
 
 onMounted(() => {
   loadMeta()
   load()
 })
+
+watch(() => [filters.activity_id, filters.type], debouncedLoad)
 </script>
 
 <style scoped>
@@ -227,5 +281,18 @@ onMounted(() => {
 
 .preview-box pre {
   white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+@media (max-width: 560px) {
+  .variable-strip span {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0;
+    text-align: center;
+  }
+
+  .preview-box {
+    padding: 12px;
+  }
 }
 </style>

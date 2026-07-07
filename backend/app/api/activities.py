@@ -196,7 +196,7 @@ def duplicate_activity(activity_id: int, db: Session = Depends(db_session), user
 @public_router.get("/{slug}")
 def get_public_activity(slug: str, db: Session = Depends(db_session)):
     activity = db.execute(select(Activity).where(Activity.slug == slug)).scalar_one_or_none()
-    if not activity:
+    if not activity or activity.status != "open":
         raise HTTPException(status_code=404, detail="活动不存在")
     fields = list_public_fields(db, activity.id)
     return ok(
@@ -234,4 +234,3 @@ def get_public_activity(slug: str, db: Session = Depends(db_session)):
             ],
         }
     )
-

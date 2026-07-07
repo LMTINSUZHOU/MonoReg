@@ -27,6 +27,7 @@ class Settings(BaseSettings):
 
     backend_cors_origins: str = "http://localhost:5173"
     max_upload_size_mb: int = 10
+    max_import_rows: int = 5000
     public_rate_limit_per_minute: int = 30
 
     init_admin_username: str = "admin"

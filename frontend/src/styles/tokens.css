@@ -16,6 +16,15 @@
   --radius-md: 8px;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.08);
+  --motion-hover: 120ms;
+  --motion-card: 160ms;
+  --motion-modal: 160ms;
+  --motion-drawer: 180ms;
+  --motion-page: 200ms;
+  --motion-progress: 200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --el-color-primary: #0a0a0a;
@@ -29,4 +38,22 @@
   --el-color-warning: #525252;
   --el-color-danger: #0a0a0a;
   --el-color-error: #0a0a0a;
+  --el-color-info: #525252;
+  --el-text-color-primary: var(--mono-black);
+  --el-text-color-regular: var(--mono-gray-700);
+  --el-text-color-secondary: var(--mono-gray-500);
+  --el-text-color-placeholder: var(--mono-gray-400);
+  --el-text-color-disabled: var(--mono-gray-400);
+  --el-border-color: var(--mono-gray-300);
+  --el-border-color-light: var(--mono-gray-200);
+  --el-border-color-lighter: var(--mono-gray-200);
+  --el-border-color-extra-light: var(--mono-gray-100);
+  --el-fill-color: var(--mono-gray-100);
+  --el-fill-color-light: var(--mono-gray-50);
+  --el-fill-color-lighter: var(--mono-gray-50);
+  --el-fill-color-extra-light: var(--mono-white);
+  --el-fill-color-blank: var(--mono-white);
+  --el-bg-color: var(--mono-white);
+  --el-bg-color-page: var(--mono-gray-50);
+  --el-bg-color-overlay: var(--mono-white);
 }

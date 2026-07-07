@@ -124,6 +124,9 @@ def delete_template(
     item = db.get(EmailTemplate, template_id)
     if not item:
         raise HTTPException(status_code=404, detail="邮件模板不存在")
+    existing_job = db.execute(select(EmailJob.id).where(EmailJob.template_id == template_id).limit(1)).scalar_one_or_none()
+    if existing_job is not None:
+        raise HTTPException(status_code=409, detail="该模板已有邮件任务引用，不能删除")
     db.delete(item)
     record_audit(db, user, "email_template.delete", "email_template", template_id, {}, request.client.host if request.client else None)
     db.commit()
@@ -208,4 +211,3 @@ def retry_failed(
     db.commit()
     enqueued = enqueue_email_job(job.id)
     return ok({"job_id": job.id, "enqueued": enqueued}, "失败邮件已重新入队")
-
